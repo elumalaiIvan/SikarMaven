@@ -1,11 +1,16 @@
 #!/bin/bash
+# hosted in ln -s ~/Workspace/Sikar/Learning/SikarMaven/sikar_mvn_DM.sh /usr/local/bin/smvn
 
-SRC_DIR="src/main/java"
-OUT_DIR="target/classes"
-MAIN_CLASS="App"
+# Get the directory of the main script
+main_script_dir="$(dirname "$(readlink -f "$0")")"
+# imports external scripts
+source "$main_script_dir/settings.sh"
 
-GREEN='\033[0;32m'
-NC='\033[0m'
+# Get the current working directory
+current_dir="$(pwd)"
+# Load configuration from application.properties
+source "$current_dir/pom.sikar"
+
 # Function to record start time
 start_time() {
     start_time=$(date +%s.%N)
@@ -28,16 +33,30 @@ end_time() {
     echo "time taken => $seconds:$milliseconds:$nanoseconds"
 }
 
+# Function to compile Java files
 compile() {
     echo -e "${GREEN}Compiling...${NC}"
     start_time  # Record start time
 
     mkdir -p "$OUT_DIR"
+    CLASSPATH="$OUT_DIR"
+    # Add external JAR files to the classpath
+    for jar in "${EXTERNAL_JARS[@]}"; do
+        jar_path="$JAR_DIR_REPO/$jar"
+        if [ -f "$jar_path" ]; then
+            CLASSPATH="$CLASSPATH:$jar_path"
+        else
+            echo "Specified JAR not found: $jar_path"
+            exit 1
+        fi
+    done
+
+    echo "classpath --> $CLASSPATH"
 
     # Compile Java code
-    if ! find "$SRC_DIR" -name "*.java" -exec javac -d "$OUT_DIR" {} +; then
-        echo "Compilation failed"
-        exit 1
+    if ! javac -cp "$CLASSPATH" -Xlint:unchecked -d "$OUT_DIR" $(find "$SRC_DIR" -name "*.java"); then
+      echo "Compilation failed"
+      exit 1
     fi
 
     end_time  # Record end time and calculate duration
@@ -48,7 +67,7 @@ compile() {
 clean() {
     echo -e "${GREEN}Cleaning...${NC}"
     rm -rf "$OUT_DIR" "$JAR_DIR"  # Remove output directories
-    echo "Cleaned successfully"
+    echo "Cleaned successfully from $OUT_DIR"
 }
 
 # Function to run compiled Java code
@@ -56,7 +75,7 @@ run() {
     echo -e "${GREEN}Running...${NC}"
     start_time  # Record start time
 
-    java -cp "$OUT_DIR" "$MAIN_CLASS"
+    java -cp "$CLASSPATH" "$MAIN_CLASS"
 
     end_time  # Record end time and calculate duration
 }
@@ -67,8 +86,8 @@ package() {
 
     mkdir -p "$JAR_DIR"
 
-    # Create JAR file
-    if ! jar -cf "$JAR_DIR/$JAR_NAME" -C "$OUT_DIR"; then
+    # Create JAR file (append version information)
+    if ! jar -cf "$JAR_DIR/$APPLICATION_NAME-$VERSION.jar" -C "$OUT_DIR" .; then
         echo "Packaging failed"
         exit 1
     fi
@@ -79,15 +98,15 @@ package() {
 }
 
 movePackageToLocalRepo() {
-  echo "jar will be moved to local repo"
+    echo "JAR will be moved to local repository"
 }
 
 install() {
-  main clean compile run package
+    main clean compile run package
 }
 
 deploy() {
-  main clean compile run package movePackageToLocalRepo
+    main clean compile run package movePackageToLocalRepo
 }
 
 # Entry point
